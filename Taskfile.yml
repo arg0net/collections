@@ -1,0 +1,13 @@
+version: '3'
+
+tasks:
+  test:
+    desc: Run unit tests.
+    cmds:
+      - go test -v ./...
+
+  fuzz:
+    desc: Run fuzz tests.
+    cmds:
+      - go test -fuzz=Fuzz -fuzztime 30s .
+
