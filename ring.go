@@ -41,13 +41,14 @@ func (r *Ring[T]) PushBack(e T) bool {
 // PopFront removes and returns the first element in the ring.
 // If the ring is empty, it returns false.
 func (r *Ring[T]) PopFront() (T, bool) {
+	var zero T
 	// right-hand side always contains the first element.
 	if len(r.right) == 0 {
-		var zero T
 		return zero, false
 	}
 
 	el := r.right[0]
+	r.right[0] = zero
 	r.right = r.right[1:]
 	if cap(r.right) == 0 {
 		// right side is exhausted, so what was the left is now the right.
@@ -68,8 +69,8 @@ func (r *Ring[T]) PopIndex(i int) (T, bool) {
 	if i == 0 {
 		return r.PopFront()
 	}
+	var zero T
 	if i < 0 || i >= r.Len() {
-		var zero T
 		return zero, false
 	}
 
@@ -79,6 +80,7 @@ func (r *Ring[T]) PopIndex(i int) (T, bool) {
 		// and the start of the left are adjacent (modulo ring size).
 		el := r.left[idx]
 		copy(r.left[idx:], r.left[idx+1:])
+		r.left[len(r.left)-1] = zero
 		r.left = r.left[:len(r.left)-1]
 		return el, true
 	}
@@ -89,6 +91,7 @@ func (r *Ring[T]) PopIndex(i int) (T, bool) {
 	el := r.right[i]
 	updated := r.right[1:]
 	copy(updated, r.right[:i])
+	r.right[0] = zero
 	r.right = updated
 	return el, true
 }
@@ -136,10 +139,8 @@ func (r *Ring[T]) Cap() int {
 // It returns the number of elements copied.
 // This does not consume elements from the ring.
 func (r *Ring[T]) Copy(out []T) int {
-	n := min(len(out), r.Len())
 	idx := copy(out, r.right)
-	copy(out[idx:], r.left)
-	return n
+	return idx + copy(out[idx:], r.left)
 }
 
 // Reset removes all elements from the ring.
