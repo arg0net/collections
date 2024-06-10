@@ -3,6 +3,7 @@ package collections_test
 import (
 	"testing"
 
+	fuzz "github.com/AdaLogics/go-fuzz-headers"
 	"github.com/stretchr/testify/require"
 
 	"github.com/arg0net/collections"
@@ -143,4 +144,142 @@ func BenchmarkRing(b *testing.B) {
 		r.PushBack(nextWrite)
 		nextWrite++
 	}
+}
+
+// fakeRing is a simplified implementation of a buffer used for fuzzing tests.
+// This behaves like a ring buffer, but it's not optimized for performance.
+type fakeRing struct {
+	elements []int
+}
+
+func (r *fakeRing) PushBack(e int) bool {
+	if len(r.elements) == cap(r.elements) {
+		return false
+	}
+	r.elements = append(r.elements, e)
+	return true
+}
+
+func (r *fakeRing) PopFront() (int, bool) {
+	if len(r.elements) == 0 {
+		return 0, false
+	}
+	el := r.elements[0]
+	copy(r.elements, r.elements[1:])
+	r.elements = r.elements[:len(r.elements)-1]
+	return el, true
+}
+
+func (r *fakeRing) Copy(out []int) int {
+	return copy(out, r.elements)
+}
+
+func (r *fakeRing) Len() int {
+	return len(r.elements)
+}
+
+func (r *fakeRing) PopIndex(i int) (int, bool) {
+	if i < 0 || i >= len(r.elements) {
+		return 0, false
+	}
+	el := r.elements[i]
+	r.elements = append(r.elements[:i], r.elements[i+1:]...)
+	return el, true
+}
+
+func (r *fakeRing) PeekIndex(idx int) (int, bool) {
+	if idx < 0 || idx >= len(r.elements) {
+		return 0, false
+	}
+	return r.elements[idx], true
+}
+
+type ringOp int
+
+const (
+	pushBack ringOp = iota
+	popFront
+	popIndex
+	peekIndex
+	lastOpForCounting // keep last
+)
+
+func dup[T any](s []T) []T {
+	out := make([]T, len(s))
+	copy(out, s)
+	return out
+}
+
+func FuzzRing(f *testing.F) {
+	init := []int{1, 2, 3, 4, 5}
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		fake := &fakeRing{elements: dup(init)}
+		real := collections.NewRing[int](len(init))
+		for _, v := range init {
+			real.PushBack(v)
+		}
+
+		fz := fuzz.NewConsumer(data)
+		var ops []ringOp
+		err := fz.CreateSlice(&ops)
+		if err != nil {
+			return
+		}
+
+		var buf1, buf2 [5]int
+		for i := 0; i < len(ops); i++ {
+			switch ops[i] % lastOpForCounting {
+			case pushBack:
+				var value int
+				if i+1 < len(ops) {
+					value = int(ops[i+1])
+					i++
+				}
+				t.Logf("pushBack %d", value)
+				ok1 := fake.PushBack(value)
+				ok2 := real.PushBack(value)
+				if ok1 != ok2 {
+					t.Fatalf("pushBack differs: %v vs %v in %v vs %v", ok1, ok2, fake, real)
+				}
+			case popFront:
+				t.Logf("popFront")
+				f1, ok1 := fake.PopFront()
+				r1, ok2 := real.PopFront()
+				if f1 != r1 || ok1 != ok2 {
+					t.Fatalf("popFront differs: %v vs %v in %v vs %v", f1, r1, fake, real)
+				}
+			case popIndex:
+				var idx int
+				if i+1 < len(ops) {
+					idx = int(ops[i+1])
+					i++
+				}
+				t.Logf("popIndex %d", idx)
+				f1, ok1 := fake.PopIndex(idx)
+				r1, ok2 := real.PopIndex(idx)
+				if f1 != r1 || ok1 != ok2 {
+					t.Fatalf("popIndex differs: %v vs %v in %v vs %v", f1, r1, fake, real)
+				}
+			case peekIndex:
+				var idx int
+				if i+1 < len(ops) {
+					idx = int(ops[i+1])
+					i++
+				}
+				t.Logf("peekIndex %d", idx)
+				f1, ok1 := fake.PeekIndex(idx)
+				r1, ok2 := real.PeekIndex(idx)
+				if f1 != r1 || ok1 != ok2 {
+					t.Fatalf("peekIndex differs: %v vs %v in %v vs %v", f1, r1, fake, real)
+				}
+			}
+			if fake.Copy(buf1[:]) != real.Copy(buf2[:]) {
+				t.Fatalf("copy differs")
+			}
+			if buf1 != buf2 {
+				t.Fatalf("buffers differ: %v vs %v", buf1, buf2)
+			}
+		}
+	})
 }

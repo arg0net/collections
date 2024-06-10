@@ -93,6 +93,35 @@ func (r *Ring[T]) PopIndex(i int) (T, bool) {
 	return el, true
 }
 
+// PeekFront returns the first element in the ring without removing it.
+func (r *Ring[T]) PeekFront() (T, bool) {
+	if len(r.right) == 0 {
+		var zero T
+		return zero, false
+	}
+	return r.right[0], true
+}
+
+// PeekIndex returns the element at the given index without removing it.
+// If the index is out of bounds, it returns false.
+// The index is 0-based, with 0 being the first element in the ring.
+// PeekIndex(0) is equivalent to PeekFront.
+func (r *Ring[T]) PeekIndex(i int) (T, bool) {
+	if i == 0 {
+		return r.PeekFront()
+	}
+	if i < 0 || i >= r.Len() {
+		var zero T
+		return zero, false
+	}
+
+	idx := i - len(r.right)
+	if idx >= 0 {
+		return r.left[idx], true
+	}
+	return r.right[i], true
+}
+
 // Len returns the number of elements in the ring.
 func (r *Ring[T]) Len() int {
 	return len(r.left) + len(r.right)
