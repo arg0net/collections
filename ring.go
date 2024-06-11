@@ -149,3 +149,21 @@ func (r *Ring[T]) Reset() {
 	r.right = r.elements[:0]
 	clear(r.elements)
 }
+
+// Scan calls the given function for each element in the ring, in order.
+// If the function returns true, then the value and index of the element are returned.
+// If no match is found, then returns the zero value of T and -1.
+func (r *Ring[T]) Scan(fn func(T) bool) (T, int) {
+	for i, e := range r.right {
+		if fn(e) {
+			return e, i
+		}
+	}
+	for i, e := range r.left {
+		if fn(e) {
+			return e, i + len(r.right)
+		}
+	}
+	var zero T
+	return zero, -1
+}
