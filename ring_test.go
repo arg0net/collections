@@ -123,6 +123,25 @@ func TestRingIndex_Wrap(t *testing.T) {
 	require.Equal(t, 6, el)
 }
 
+func TestRingScan(t *testing.T) {
+	r := collections.NewRing[int](5)
+	for i := 0; i < 4; i++ {
+		r.PushBack(i)
+	}
+	for i := 5; i < 100; i++ {
+		check := i % 4
+		value, ok := r.PeekIndex(check)
+		require.True(t, ok)
+		found, idx := r.Scan(func(v int) bool {
+			return v == value
+		})
+		require.Equal(t, value, found)
+		require.Equal(t, check, idx)
+		r.PopFront()
+		r.PushBack(i)
+	}
+}
+
 func BenchmarkRing(b *testing.B) {
 	r := collections.NewRing[int](1024)
 	// fill the ring
@@ -201,6 +220,7 @@ const (
 	popFront
 	popIndex
 	peekIndex
+	scan
 	lastOpForCounting // keep last
 )
 
@@ -272,6 +292,23 @@ func FuzzRing(f *testing.F) {
 				r1, ok2 := real.PeekIndex(idx)
 				if f1 != r1 || ok1 != ok2 {
 					t.Fatalf("peekIndex differs: %v vs %v in %v vs %v", f1, r1, fake, real)
+				}
+			case scan:
+				var idx int
+				if i+1 < len(ops) {
+					idx = int(ops[i+1])
+					i++
+				}
+				t.Logf("scan %d", idx)
+				scanNum := 0
+				v, loc := real.Scan(func(v int) bool {
+					o := scanNum
+					scanNum++
+					return o == idx
+				})
+				v2, ok2 := real.PeekIndex(idx)
+				if ok2 && (loc != idx || v != v2) {
+					t.Fatalf("scan differs: %v vs %v in %v", v, v2, real)
 				}
 			}
 			if fake.Copy(buf1[:]) != real.Copy(buf2[:]) {
