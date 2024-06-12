@@ -142,6 +142,31 @@ func TestRingScan(t *testing.T) {
 	}
 }
 
+func TestRingFill(t *testing.T) {
+	r := collections.NewRing[int](5)
+	n := r.Fill(func(els []int) int {
+		return copy(els, []int{1, 2, 3, 4, 5})
+	})
+	require.Equal(t, 5, n)
+	require.Equal(t, 5, r.Len())
+	require.Equal(t, 5, r.Cap())
+	for i := 0; i < 5; i++ {
+		el, ok := r.PopFront()
+		require.True(t, ok)
+		require.Equal(t, i+1, el)
+		n := r.Fill(func(els []int) int {
+			els[0] = i + 6
+			return 1
+		})
+		require.Equal(t, 1, n)
+	}
+	for i := 0; i < 5; i++ {
+		el, ok := r.PopFront()
+		require.True(t, ok)
+		require.Equal(t, i+6, el)
+	}
+}
+
 func BenchmarkRing(b *testing.B) {
 	r := collections.NewRing[int](1024)
 	// fill the ring
