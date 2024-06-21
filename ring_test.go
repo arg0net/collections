@@ -1,6 +1,7 @@
 package collections_test
 
 import (
+	"math/rand"
 	"testing"
 
 	fuzz "github.com/AdaLogics/go-fuzz-headers"
@@ -142,28 +143,59 @@ func TestRingScan(t *testing.T) {
 	}
 }
 
-func TestRingFill(t *testing.T) {
+func TestRingCompact(t *testing.T) {
+	expected := make([]int, 4)
 	r := collections.NewRing[int](5)
-	n := r.Fill(func(els []int) int {
-		return copy(els, []int{1, 2, 3, 4, 5})
-	})
-	require.Equal(t, 5, n)
-	require.Equal(t, 5, r.Len())
-	require.Equal(t, 5, r.Cap())
-	for i := 0; i < 5; i++ {
-		el, ok := r.PopFront()
-		require.True(t, ok)
-		require.Equal(t, i+1, el)
-		n := r.Fill(func(els []int) int {
-			els[0] = i + 6
-			return 1
-		})
-		require.Equal(t, 1, n)
+	for i := 0; i < 4; i++ {
+		r.PushBack(i)
+		expected[i] = i
 	}
-	for i := 0; i < 5; i++ {
-		el, ok := r.PopFront()
-		require.True(t, ok)
-		require.Equal(t, i+6, el)
+
+	for i := 5; i < 100; i++ {
+		toPop := i % 4
+		for j := 0; j < toPop; j++ {
+			r.PopFront()
+			expected = expected[1:]
+		}
+		r.Compact()
+		require.Equal(t, len(expected), r.Len())
+		buf := make([]int, 5)
+		require.Equal(t, len(expected), r.Copy(buf))
+		require.Equal(t, expected, buf[:len(expected)])
+
+		writes := i % 10
+		for j := 0; j < writes; j++ {
+			if r.Len() == r.Cap() {
+				r.PopFront()
+				expected = expected[1:]
+			}
+			r.PushBack(i)
+			expected = append(expected, i)
+		}
+	}
+}
+
+func TestRingLimit(t *testing.T) {
+	expected := make([]int, 0, 100)
+	r := collections.NewRing[int](100)
+	for i := 0; i < 100; i++ {
+		r.PushBack(i)
+		expected = append(expected, i)
+	}
+
+	for i := 100; i < 200; i++ {
+		r.PopFront()
+		expected = expected[1:]
+		if i%2 == 0 {
+			r.PushBack(i)
+			expected = append(expected, i)
+		}
+		lim := rand.Intn(len(expected))
+		tmp := r.Limit(lim)
+		require.Equal(t, lim, tmp.Len())
+		buf := make([]int, lim)
+		require.Equal(t, lim, tmp.Copy(buf))
+		require.Equal(t, expected[:lim], buf)
 	}
 }
 
@@ -192,6 +224,7 @@ func BenchmarkRing(b *testing.B) {
 
 // fakeRing is a simplified implementation of a buffer used for fuzzing tests.
 // This behaves like a ring buffer, but it's not optimized for performance.
+// This is used for differential Fuzzing to look for unexpected behavior.
 type fakeRing struct {
 	elements []int
 }
@@ -255,6 +288,9 @@ func dup[T any](s []T) []T {
 	return out
 }
 
+// FuzzRing applies differential fuzzing to Ring.
+// It compares the behavior of the real Ring with a fakeRing, where the
+// fuzzed input is a set of instructions to apply.
 func FuzzRing(f *testing.F) {
 	init := []int{1, 2, 3, 4, 5}
 

@@ -38,24 +38,6 @@ func (r *Ring[T]) PushBack(e T) bool {
 	return true
 }
 
-// PushBatch adds the elements in the array to the ring, in order.
-// It returns the number of elements added.
-func (r *Ring[T]) PushBatch(arr []T) int {
-	var added int
-	if cap(r.right) > len(r.right) {
-		n := copy(r.right[len(r.right):cap(r.right)], arr)
-		arr = arr[n:]
-		added += n
-	}
-
-	if cap(r.left) > len(r.left) {
-		n := copy(r.left[len(r.left):cap(r.left)], arr)
-		added += n
-	}
-
-	return added
-}
-
 // PopFront removes and returns the first element in the ring.
 // If the ring is empty, it returns false.
 func (r *Ring[T]) PopFront() (T, bool) {
@@ -186,6 +168,58 @@ func (r *Ring[T]) Scan(fn func(T) bool) (T, int) {
 	return zero, -1
 }
 
+// Limit returns a view of the Ring which is limited to the given number of elements.
+// If the ring has fewer elements than the limit, then it does nothing.
+// Note that this shares the underlying data with the original ring, so
+// modifying one will cause unpredictable results in the other.
+func (r *Ring[T]) Limit(limit int) *Ring[T] {
+	if r.Len() <= limit {
+		return r
+	}
+
+	extra := limit - len(r.right)
+	if extra <= 0 {
+		return &Ring[T]{
+			elements: r.elements,
+			right:    r.right[:limit],
+			left:     r.elements[:0],
+		}
+	}
+
+	return &Ring[T]{
+		elements: r.elements,
+		right:    r.right,
+		left:     r.left[:extra],
+	}
+}
+
+// PushBatch adds the elements in the array to the ring, in order.
+// It returns the number of elements added.
+func (r *Ring[T]) PushBatch(arr []T) int {
+	var added int
+	if cap(r.right) > len(r.right) {
+		n := copy(r.right[len(r.right):cap(r.right)], arr)
+		arr = arr[n:]
+		added += n
+	}
+
+	if cap(r.left) > len(r.left) {
+		n := copy(r.left[len(r.left):cap(r.left)], arr)
+		added += n
+	}
+
+	return added
+}
+
+// WriteTo copies the elements from the ring to the given ring.
+func (r *Ring[T]) WriteTo(out *Ring[T]) int {
+	copied := out.PushBatch(r.right)
+	if len(r.left) > 0 && copied == len(r.right) {
+		copied += out.PushBatch(r.left)
+	}
+	return copied
+}
+
 // Compact causes the ring to compact the elements to the left side of the ring.
 // This results in a single contiguous slice of elements, and empty space.
 func (r *Ring[T]) Compact() {
@@ -198,42 +232,12 @@ func (r *Ring[T]) Compact() {
 	}
 
 	// Use temporary space to avoid the headache of shifting in place.
-	oldLeft := make([]T, len(r.left))
 	size := r.Len()
-	copy(oldLeft, r.left)
-	copy(r.elements, r.right)
-	copy(r.elements[len(r.right):], oldLeft)
-	clear(r.elements[size:])
-	r.left = r.elements[:0]
+	oldLeft := make([]T, len(r.left))
+	copy(oldLeft, r.left)                    // make a copy of left side
+	copy(r.elements, r.right)                // copy right side into position
+	copy(r.elements[len(r.right):], oldLeft) // put left side after right side
+	clear(r.elements[size:])                 // clear the rest of the elements
 	r.right = r.elements[:size]
-}
-
-// Fill calls the given function with a slice of empty elements in the ring to fill.
-// The function returns the number of elements filled, which will cause the ring
-// to be updated.
-//
-// Note that the function will be called at most once, and since the free space
-// in the ring is not guaranteed to be contiguous, the available space may be
-// less than the available capacity in the ring.
-func (r *Ring[T]) Fill(fn func([]T) int) int {
-	if cap(r.right) != len(r.right) {
-		// space to expand on the right.
-		n := fn(r.elements[len(r.right):])
-		if n > 0 && n <= cap(r.right)-len(r.right) {
-			r.right = r.right[:len(r.right)+n]
-			return n
-		} else {
-			return 0
-		}
-	}
-
-	if cap(r.left) != len(r.left) {
-		// space to expand on the left.
-		n := fn(r.elements[len(r.left):cap(r.left)])
-		if n > 0 && n <= cap(r.left)-len(r.left) {
-			r.left = r.left[:len(r.left)+n]
-			return n
-		}
-	}
-	return 0
+	r.left = r.elements[:0]
 }
