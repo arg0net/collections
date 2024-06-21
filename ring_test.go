@@ -144,26 +144,27 @@ func TestRingScan(t *testing.T) {
 }
 
 func TestRingCompact(t *testing.T) {
-	expected := make([]int, 4)
-	r := collections.NewRing[int](5)
-	for i := 0; i < 4; i++ {
+	expected := make([]int, 0, 50)
+	r := collections.NewRing[int](50)
+	for i := 0; i < 40; i++ {
 		r.PushBack(i)
-		expected[i] = i
+		expected = append(expected, i)
 	}
 
 	for i := 5; i < 100; i++ {
-		toPop := i % 4
+		toPop := rand.Intn(4)
 		for j := 0; j < toPop; j++ {
-			r.PopFront()
-			expected = expected[1:]
+			if _, ok := r.PopFront(); ok {
+				expected = expected[1:]
+			}
 		}
 		r.Compact()
 		require.Equal(t, len(expected), r.Len())
-		buf := make([]int, 5)
+		buf := make([]int, 50)
 		require.Equal(t, len(expected), r.Copy(buf))
 		require.Equal(t, expected, buf[:len(expected)])
 
-		writes := i % 10
+		writes := rand.Intn(10)
 		for j := 0; j < writes; j++ {
 			if r.Len() == r.Cap() {
 				r.PopFront()
@@ -172,6 +173,41 @@ func TestRingCompact(t *testing.T) {
 			r.PushBack(i)
 			expected = append(expected, i)
 		}
+	}
+}
+
+func TestRingWrite(t *testing.T) {
+	expected := make([]int, 0, 50)
+	r := collections.NewRing[int](50)
+	for i := 0; i < 40; i++ {
+		r.PushBack(i)
+		expected = append(expected, i)
+	}
+
+	for i := 5; i < 100; i++ {
+		toPop := rand.Intn(10)
+		for j := 0; j < toPop; j++ {
+			if _, ok := r.PopFront(); ok {
+				expected = expected[1:]
+			}
+		}
+
+		toWrite := make([]int, rand.Intn(10)+1)
+		for j := range toWrite {
+			toWrite[j] = rand.Int()
+		}
+		count := r.PushBatch(toWrite)
+		expected = append(expected, toWrite[:count]...)
+
+		dup := collections.NewRing[int](50)
+		require.Equal(t, r.Len(), r.WriteTo(dup))
+		require.Equal(t, r.Len(), dup.Len(), "r: %v, dup: %v", r, dup)
+
+		buf := make([]int, 50)
+		buf2 := make([]int, 50)
+		require.Equal(t, r.Len(), dup.Copy(buf))
+		require.Equal(t, r.Len(), r.Copy(buf2))
+		require.Equal(t, buf, buf2)
 	}
 }
 
@@ -378,6 +414,50 @@ func FuzzRing(f *testing.F) {
 			if buf1 != buf2 {
 				t.Fatalf("buffers differ: %v vs %v", buf1, buf2)
 			}
+		}
+	})
+}
+
+func FuzzRingWrite(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data []byte) {
+		fz := fuzz.NewConsumer(data)
+		var counts []int
+		err := fz.CreateSlice(&counts)
+		if err != nil {
+			return
+		}
+
+		expected := make([]int, 0, 50)
+		r := collections.NewRing[int](50)
+		for i := 0; i < 40; i++ {
+			r.PushBack(i)
+			expected = append(expected, i)
+		}
+
+		for i := 0; i < len(counts); i++ {
+			toPop := rand.Intn(counts[i] + 1)
+			for j := 0; j < toPop; j++ {
+				if _, ok := r.PopFront(); ok {
+					expected = expected[1:]
+				}
+			}
+
+			toWrite := make([]int, counts[(i+1)%len(counts)])
+			for j := range toWrite {
+				toWrite[j] = rand.Int()
+			}
+			count := r.PushBatch(toWrite)
+			expected = append(expected, toWrite[:count]...)
+
+			dup := collections.NewRing[int](50)
+			require.Equal(t, r.Len(), r.WriteTo(dup))
+			require.Equal(t, r.Len(), dup.Len(), "r: %v, dup: %v", r, dup)
+
+			buf := make([]int, 50)
+			buf2 := make([]int, 50)
+			require.Equal(t, r.Len(), dup.Copy(buf))
+			require.Equal(t, r.Len(), r.Copy(buf2))
+			require.Equal(t, buf, buf2)
 		}
 	})
 }

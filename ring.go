@@ -199,14 +199,16 @@ func (r *Ring[T]) PushBatch(arr []T) int {
 	var added int
 	if cap(r.right) > len(r.right) {
 		n := copy(r.right[len(r.right):cap(r.right)], arr)
+		r.right = r.right[:len(r.right)+n]
 		arr = arr[n:]
 		added += n
 	}
-
-	if cap(r.left) > len(r.left) {
-		n := copy(r.left[len(r.left):cap(r.left)], arr)
-		added += n
+	if len(arr) == 0 {
+		return added
 	}
+
+	mmax := min(len(arr), len(r.elements)-len(r.right)-len(r.left))
+	added += copy(r.elements[len(r.left):], arr[:mmax])
 
 	return added
 }
@@ -220,8 +222,8 @@ func (r *Ring[T]) WriteTo(out *Ring[T]) int {
 	return copied
 }
 
-// Compact causes the ring to compact the elements to the left side of the ring.
-// This results in a single contiguous slice of elements, and empty space.
+// Compact causes the ring to compact the elements to the front of the space
+// as one contiguous slice.
 func (r *Ring[T]) Compact() {
 	if len(r.left) == 0 {
 		// Simple case - move the right-hand-side elements.

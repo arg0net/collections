@@ -9,7 +9,8 @@ tasks:
   fuzz:
     desc: Run fuzz tests.
     cmds:
-      - go test -fuzz=Fuzz -fuzztime 30s .
+      - go test -fuzz=FuzzRing$ -fuzztime 30s .
+      - go test -fuzz=FuzzRingWrite -fuzztime 30s .
 
   bench:
     desc: Run benchmarks.
