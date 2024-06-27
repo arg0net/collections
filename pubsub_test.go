@@ -1,4 +1,4 @@
-package collections
+package collections_test
 
 import (
 	"context"
@@ -9,10 +9,12 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/arg0net/collections"
 )
 
 func TestPubSub(t *testing.T) {
-	c := NewChannel[int]()
+	var c collections.Channel[int]
 
 	// Subscribe to the channel.
 	seen := make([]atomic.Bool, 64)
@@ -39,8 +41,8 @@ func TestPubSub(t *testing.T) {
 	}, 2*time.Second, 10*time.Millisecond)
 }
 
-func TestWatch(t *testing.T) {
-	c := NewChannel[int]()
+func TestPubSub_Watch(t *testing.T) {
+	var c collections.Channel[int]
 
 	ctx, cancel := context.WithCancel(context.Background())
 	received := make(chan int, 1)
@@ -70,7 +72,7 @@ func TestWatch(t *testing.T) {
 }
 
 func BenchmarkPubSub(b *testing.B) {
-	for _, n := range []int{1, 10, 100, 1000} {
+	for _, n := range []int{0, 1, 10, 100, 1000} {
 		b.Run(fmt.Sprintf("PubSub-%d", n), func(b *testing.B) {
 			benchmarkPubSubN(b, n)
 		})
@@ -78,11 +80,11 @@ func BenchmarkPubSub(b *testing.B) {
 }
 
 func benchmarkPubSubN(b *testing.B, n int) {
-	c := NewChannel[int]()
+	var c collections.Channel[int]
 
 	// Setup n subscribers.
 	received := make([]*atomic.Int64, n)
-	subs := make([]*Subscription[int], n)
+	subs := make([]*collections.Subscription[int], n)
 	for i := 0; i < n; i++ {
 		received[i] = new(atomic.Int64)
 		subs[i] = c.Subscribe(func(_ int) {
