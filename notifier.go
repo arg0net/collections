@@ -2,7 +2,6 @@ package collections
 
 import (
 	"context"
-	"reflect"
 	"sync"
 )
 
@@ -60,48 +59,5 @@ func (n *StatefulNotifier[T]) Wait(ctx context.Context, fn func(T) bool) (T, err
 			return zero, ctx.Err()
 		case <-ch:
 		}
-	}
-}
-
-// WaitAny blocks until one of the given states match the condition function,
-// or else the context is canceled. It returns the value that satisfied the condition,
-// along with an index of the notifier that was matched.
-//
-// Note that, like Wait, WaitAny may miss intermediate updates if multiple
-// updates occur quickly.
-//
-// If the context was canceled, the value will be the zero value and the
-// index will be -1.
-func WaitAny[T any](ctx context.Context, fn func(T) bool,
-	notifiers ...*StatefulNotifier[T]) (T, int) {
-
-	cases := make([]reflect.SelectCase, 0, len(notifiers)+1)
-	for i, n := range notifiers {
-		v, ch := n.Load()
-		if fn(v) {
-			return v, i
-		}
-		cases = append(cases, reflect.SelectCase{
-			Dir:  reflect.SelectRecv,
-			Chan: reflect.ValueOf(ch),
-		})
-	}
-	cases = append(cases, reflect.SelectCase{
-		Dir:  reflect.SelectRecv,
-		Chan: reflect.ValueOf(ctx.Done()),
-	})
-
-	for {
-		chosen, _, _ := reflect.Select(cases)
-		if chosen == len(notifiers) {
-			var zero T
-			return zero, -1
-		}
-
-		v, ch := notifiers[chosen].Load()
-		if fn(v) {
-			return v, chosen
-		}
-		cases[chosen].Chan = reflect.ValueOf(ch)
 	}
 }
