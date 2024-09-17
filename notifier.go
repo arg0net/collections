@@ -40,6 +40,20 @@ func (n *StatefulNotifier[T]) Load() (T, <-chan struct{}) {
 	return n.value, n.updated
 }
 
+// Update will atomically provide the current value to the update function
+// and store the result of the function.
+// Note that this will call the user's function with a lock held, so
+// if the function blocks, then other calls to the notifier will block.
+func (n *StatefulNotifier[T]) Update(fn func(T) T) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	n.value = fn(n.value)
+	old := n.updated
+	n.updated = make(chan struct{})
+	close(old)
+}
+
 // Wait blocks until the given condition function returns true
 // or the context is canceled. It returns the value that satisfied the condition.
 //
