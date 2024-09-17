@@ -4,6 +4,7 @@ import (
 	"context"
 	"math/rand"
 	"testing"
+	"sync"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -27,6 +28,31 @@ func TestNotifier(t *testing.T) {
 
 	v, _ = sn.Load()
 	require.Equal(t, 4, v)
+}
+
+func TestNotifierUpdate(t *testing.T) {
+	sn := collections.NewStatefulNotifier(0)
+	start := make(chan struct{})
+
+	incr := func(in int) int {
+		return in+1
+	}
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			select {
+			case <-start:
+			}
+			sn.Update(incr)
+		}()
+	}
+	close(start)
+
+	wg.Wait()
+	v, _ := sn.Load()
+	require.Equal(t, 10, v)
 }
 
 func TestNotifierWait(t *testing.T) {
