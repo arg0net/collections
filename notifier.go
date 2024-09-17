@@ -17,7 +17,6 @@ type StatefulNotifier[T any] struct {
 func NewStatefulNotifier[T any](initial T) *StatefulNotifier[T] {
 	return &StatefulNotifier[T]{
 		value:   initial,
-		updated: make(chan struct{}),
 	}
 }
 
@@ -27,9 +26,10 @@ func (n *StatefulNotifier[T]) Store(value T) {
 	defer n.mu.Unlock()
 
 	n.value = value
-	old := n.updated
-	n.updated = make(chan struct{})
-	close(old)
+	if n.updated != nil {
+		close(n.updated)
+		n.updated = nil
+	}
 }
 
 // Load returns the current value, along with a channel that will unblock
@@ -37,6 +37,9 @@ func (n *StatefulNotifier[T]) Store(value T) {
 func (n *StatefulNotifier[T]) Load() (T, <-chan struct{}) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	if n.updated == nil {
+		n.updated = make(chan struct{})
+	}
 	return n.value, n.updated
 }
 
@@ -44,14 +47,16 @@ func (n *StatefulNotifier[T]) Load() (T, <-chan struct{}) {
 // and store the result of the function.
 // Note that this will call the user's function with a lock held, so
 // if the function blocks, then other calls to the notifier will block.
-func (n *StatefulNotifier[T]) Update(fn func(T) T) {
+func (n *StatefulNotifier[T]) Update(fn func(T) T) T {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
 	n.value = fn(n.value)
-	old := n.updated
-	n.updated = make(chan struct{})
-	close(old)
+	if n.updated != nil {
+		close(n.updated)
+		n.updated = nil
+	}
+	return n.value
 }
 
 // Wait blocks until the given condition function returns true
