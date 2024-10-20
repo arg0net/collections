@@ -1,6 +1,6 @@
 module github.com/arg0net/collections
 
-go 1.22.3
+go 1.23.0
 
 require (
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20230811130428-ced1acdcaa24

@@ -71,6 +71,32 @@ func TestPubSub_Watch(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestPubSub_Receive(t *testing.T) {
+	var c collections.Channel[int]
+
+	it := c.Receive()
+
+	// Publish to the channel.
+	go func() {
+		for _, i := range rand.Perm(64) {
+			c.Publish(i)
+		}
+	}()
+
+	var count int
+	var sum int
+	for v := range it {
+		sum += v
+		// The sequence is infinite, so we need to break out of the loop.
+		count++
+		if count == 64 {
+			break
+		}
+	}
+
+	require.Equal(t, 2016, sum)
+}
+
 func BenchmarkPubSub(b *testing.B) {
 	for _, n := range []int{0, 1, 10, 100, 1000} {
 		b.Run(fmt.Sprintf("PubSub-%d", n), func(b *testing.B) {

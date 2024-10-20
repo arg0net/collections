@@ -2,6 +2,7 @@ package collections
 
 import (
 	"context"
+	"iter"
 	"sync"
 )
 
@@ -64,6 +65,24 @@ func (c *Channel[T]) Watch(ctx context.Context, fn func(T) error) error {
 				return err
 			}
 			next = next.next
+		}
+	}
+}
+
+// Receive subscribes to updates on the channel and returns a sequence of values.
+// The subscription is setup before the function returns, so it is safe to publish
+// values immediately after calling Receive.
+func (c *Channel[T]) Receive() iter.Seq[T] {
+	next := c.head()
+	return func(yield func(T) bool) {
+		for {
+			select {
+			case <-next.final:
+				if !yield(next.value) {
+					return
+				}
+				next = next.next
+			}
 		}
 	}
 }

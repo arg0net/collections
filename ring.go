@@ -1,5 +1,7 @@
 package collections
 
+import "iter"
+
 // Ring is a fixed-size ring buffer that supports pushing and popping elements,
 // as well as copying elements into a slice, and removing an element by index.
 // The ring is implemented as a single slice, which is never reallocated.
@@ -166,4 +168,20 @@ func (r *Ring[T]) Scan(fn func(T) bool) (T, int) {
 	}
 	var zero T
 	return zero, -1
+}
+
+// All returns a sequence of all elements in the ring.
+func (r *Ring[T]) All() iter.Seq[T] {
+	return func(yield func(T) bool) {
+		for _, e := range r.right {
+			if !yield(e) {
+				return
+			}
+		}
+		for _, e := range r.left {
+			if !yield(e) {
+				return
+			}
+		}
+	}
 }
