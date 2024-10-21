@@ -3,6 +3,7 @@ package collections_test
 import (
 	"context"
 	"fmt"
+	"iter"
 	"math/rand"
 	"sync/atomic"
 	"testing"
@@ -74,27 +75,30 @@ func TestPubSub_Watch(t *testing.T) {
 func TestPubSub_Receive(t *testing.T) {
 	var c collections.Channel[int]
 
-	it := c.Receive()
+	recv1 := c.Receive()
+	recv2 := c.Receive()
 
 	// Publish to the channel.
 	go func() {
 		for _, i := range rand.Perm(64) {
 			c.Publish(i)
 		}
+		c.Close()
 	}()
 
-	var count int
-	var sum int
-	for v := range it {
-		sum += v
-		// The sequence is infinite, so we need to break out of the loop.
-		count++
-		if count == 64 {
-			break
+	sum := func(recv iter.Seq[int]) int {
+		var sum int
+		for v := range recv {
+			sum += v
 		}
+		return sum
 	}
 
-	require.Equal(t, 2016, sum)
+	sum1 := sum(recv1)
+	sum2 := sum(recv2)
+
+	require.Equal(t, 2016, sum1)
+	require.Equal(t, 2016, sum2)
 }
 
 func BenchmarkPubSub(b *testing.B) {
