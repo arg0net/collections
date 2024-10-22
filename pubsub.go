@@ -2,22 +2,29 @@ package collections
 
 import (
 	"context"
+	"iter"
 	"sync"
 )
 
-// Channel is a publish/subscribe channel. It is similar to an infinitely
-// buffered Go channel, but where each value is sent to all subscribers.
+// Channel is a publish/subscribe channel. It is similar to a Go channel with
+// infinite capacity, with a couple important differences.
 //
-// The zero value of a Channel is ready to use.
+// 1. Multiple receivers. There may be multiple receivers (or publishers), and
+// all receivers get all messages.
+//
+// 2. Persistence. Messages are not persisted. If no receivers are listening when
+// a message is published, it will be lost. When a receiver subscribes, it will
+// only receive messages published after the subscription is created.
 type Channel[T any] struct {
 	mu   sync.Mutex // for reading `next` and for writes.
 	next *message[T]
 }
 
 type message[T any] struct {
-	value T
-	next  *message[T]
-	final chan struct{}
+	value  T
+	next   *message[T]
+	final  chan struct{}
+	closed bool
 }
 
 // Publish a new value to the channel. This value will be sent to all subscribers.
@@ -27,8 +34,8 @@ func (c *Channel[T]) Publish(value T) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.next == nil {
-		// no subscribers, can drop message.
+	if c.next == nil || c.next.closed {
+		// drop message.
 		return
 	}
 
@@ -38,6 +45,23 @@ func (c *Channel[T]) Publish(value T) {
 	old.value = value
 	old.next = next
 	close(old.final)
+}
+
+// Close the channel. This will prevent any new values from being published, and
+// will cause all subscribers to stop receiving values after the last message.
+// For receive iterators, this will cause the iterator to terminate.
+func (c *Channel[T]) Close() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.next == nil {
+		c.next = &message[T]{final: make(chan struct{})}
+	}
+	if c.next.closed {
+		return
+	}
+	c.next.closed = true
+	close(c.next.final)
 }
 
 func (c *Channel[T]) head() *message[T] {
@@ -52,6 +76,7 @@ func (c *Channel[T]) head() *message[T] {
 // Watch updates on the channel. The function will be called with each new value
 // sent to the channel. If the function returns an error, the subscription will
 // be canceled and the error will be returned.
+// If the channel is closed, Watch will return nil.
 func (c *Channel[T]) Watch(ctx context.Context, fn func(T) error) error {
 	next := c.head()
 	for {
@@ -60,10 +85,32 @@ func (c *Channel[T]) Watch(ctx context.Context, fn func(T) error) error {
 			return ctx.Err()
 
 		case <-next.final:
+			if next.closed {
+				return nil
+			}
 			if err := fn(next.value); err != nil {
 				return err
 			}
 			next = next.next
+		}
+	}
+}
+
+// Receive subscribes to updates on the channel and returns a sequence of values.
+// The subscription is setup before the function returns, so it is safe to publish
+// values immediately after calling Receive.
+// The sequence may be infinite, it will only terminate if the channel is closed.
+func (c *Channel[T]) Receive() iter.Seq[T] {
+	next := c.head()
+	return func(yield func(T) bool) {
+		for {
+			select {
+			case <-next.final:
+				if next.closed || !yield(next.value) {
+					return
+				}
+				next = next.next
+			}
 		}
 	}
 }
@@ -98,6 +145,9 @@ func (s *Subscription[T]) loop(next *message[T], fn func(T)) {
 			return
 
 		case <-next.final:
+			if next.closed {
+				return
+			}
 			fn(next.value)
 			next = next.next
 		}
