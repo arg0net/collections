@@ -3,8 +3,9 @@ package collections_test
 import (
 	"context"
 	"math/rand"
-	"testing"
 	"sync"
+	"sync/atomic"
+	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
@@ -35,7 +36,7 @@ func TestNotifierUpdate(t *testing.T) {
 	start := make(chan struct{})
 
 	incr := func(in int) int {
-		return in+1
+		return in + 1
 	}
 	var wg sync.WaitGroup
 	for i := 0; i < 10; i++ {
@@ -97,6 +98,37 @@ func TestWaitCancel(t *testing.T) {
 
 	err := <-result
 	require.ErrorIs(t, err, context.Canceled)
+}
+
+func TestWatch(t *testing.T) {
+	sn := collections.NewStatefulNotifier(0)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var lastValue atomic.Int32
+	var done atomic.Bool
+	recv := sn.Watch(ctx)
+	go func() {
+		for v := range recv {
+			lastValue.Store(int32(v))
+		}
+		done.Store(true)
+	}()
+
+	sn.Store(42)
+	require.Eventually(t, func() bool {
+		return lastValue.Load() == 42
+	}, 2*time.Second, 10*time.Millisecond)
+
+	sn.Store(999)
+	require.Eventually(t, func() bool {
+		return lastValue.Load() == 999
+	}, 2*time.Second, 10*time.Millisecond)
+
+	cancel()
+	require.Eventually(t, func() bool {
+		return done.Load()
+	}, 2*time.Second, 10*time.Millisecond)
 }
 
 func TestNotifierWaitAny(t *testing.T) {

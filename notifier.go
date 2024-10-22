@@ -2,6 +2,7 @@ package collections
 
 import (
 	"context"
+	"iter"
 	"sync"
 )
 
@@ -16,7 +17,7 @@ type StatefulNotifier[T any] struct {
 
 func NewStatefulNotifier[T any](initial T) *StatefulNotifier[T] {
 	return &StatefulNotifier[T]{
-		value:   initial,
+		value: initial,
 	}
 }
 
@@ -77,6 +78,28 @@ func (n *StatefulNotifier[T]) Wait(ctx context.Context, fn func(T) bool) (T, err
 			var zero T
 			return zero, ctx.Err()
 		case <-ch:
+		}
+	}
+}
+
+// Watch returns an iterator which will yield the current value and any updates.
+// Note that updates may be missed if multiple updates occur quickly.
+// If all updates should be processed, use a Channel instead.
+// If the context is cancelled, then the iterator terminates.
+func (n *StatefulNotifier[T]) Watch(ctx context.Context) iter.Seq[T] {
+	v, ch := n.Load()
+	return func(yield func(T) bool) {
+		for {
+			if !yield(v) {
+				return
+			}
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-ch:
+				v, ch = n.Load()
+			}
 		}
 	}
 }
