@@ -5,6 +5,8 @@ import (
 	"reflect"
 )
 
+// NotifierLoader is an interface that provides a Load method that returns a value
+// and a channel that will be closed when the value is updated.
 type NotifierLoader[T any] interface {
 	Load() (T, <-chan struct{})
 }

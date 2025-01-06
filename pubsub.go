@@ -123,22 +123,37 @@ func (c *Channel[T]) Subscribe(fn func(T)) *Subscription[T] {
 	next := c.head()
 	sub := &Subscription[T]{
 		stop: make(chan struct{}),
+		done: make(chan struct{}),
 	}
 
 	go sub.loop(next, fn)
 	return sub
 }
 
+// Subscription is a subscription to a Channel. It will receive all values
+// published to the channel until it is canceled.
 type Subscription[T any] struct {
-	once sync.Once
-	stop chan struct{}
+	once sync.Once     // to ensure stop is closed only once.
+	stop chan struct{} // close to stop the subscription loop.
+	done chan struct{} // closed when the subscription loop has finished.
 }
 
+// Cancel the subscription. This will cause the subscription to stop receiving
+// updates from the channel.
+// Note that the subscription loop runs in the background, so there may
+// be some latency between the cancel call and the subscription stopping.
 func (s *Subscription[T]) Cancel() {
 	s.once.Do(func() { close(s.stop) })
 }
 
+// Done returns a channel that will be closed when the subscription loop has
+// finished.
+func (s *Subscription[T]) Done() <-chan struct{} {
+	return s.done
+}
+
 func (s *Subscription[T]) loop(next *message[T], fn func(T)) {
+	defer close(s.done)
 	for {
 		select {
 		case <-s.stop:

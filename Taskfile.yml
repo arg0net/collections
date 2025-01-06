@@ -4,7 +4,12 @@ tasks:
   test:
     desc: Run unit tests.
     cmds:
-      - go test -v ./...
+      - go test -race -v ./...
+
+  lint:
+    desc: Run linters.
+    cmds:
+      - revive .
 
   fuzz:
     desc: Run fuzz tests.

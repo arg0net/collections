@@ -15,6 +15,7 @@ type StatefulNotifier[T any] struct {
 	updated chan struct{}
 }
 
+// NewStatefulNotifier creates a new StatefulNotifier with the given initial value.
 func NewStatefulNotifier[T any](initial T) *StatefulNotifier[T] {
 	return &StatefulNotifier[T]{
 		value: initial,
