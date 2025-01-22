@@ -1,6 +1,7 @@
 package collections_test
 
 import (
+	"slices"
 	"testing"
 
 	fuzz "github.com/AdaLogics/go-fuzz-headers"
@@ -124,7 +125,7 @@ func TestRingIndex_Wrap(t *testing.T) {
 }
 
 func TestRingScan(t *testing.T) {
-	r := collections.NewRing[int](5)
+	r := collections.NewRing[int](7)
 	for i := 0; i < 4; i++ {
 		r.PushBack(i)
 	}
@@ -140,6 +141,21 @@ func TestRingScan(t *testing.T) {
 		r.PopFront()
 		r.PushBack(i)
 	}
+
+	// Final result should be 96, 97, 98, 99
+	require.Equal(t, []int{96, 97, 98, 99}, slices.Collect(r.All()))
+}
+
+func TestRingResize(t *testing.T) {
+	r := collections.NewRing[int](3)
+	require.True(t, r.PushBack(1))
+	require.True(t, r.PushBack(2))
+	require.True(t, r.PushBack(3))
+	require.False(t, r.PushBack(4))
+	require.Error(t, r.Resize(2))
+	require.NoError(t, r.Resize(5))
+	require.Equal(t, 3, r.Len())
+	require.Equal(t, 5, r.Cap())
 }
 
 func BenchmarkRing(b *testing.B) {

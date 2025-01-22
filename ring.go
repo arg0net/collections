@@ -1,6 +1,9 @@
 package collections
 
-import "iter"
+import (
+	"fmt"
+	"iter"
+)
 
 // Ring is a fixed-size ring buffer that supports pushing and popping elements,
 // as well as copying elements into a slice, and removing an element by index.
@@ -143,6 +146,21 @@ func (r *Ring[T]) Cap() int {
 func (r *Ring[T]) Copy(out []T) int {
 	idx := copy(out, r.right)
 	return idx + copy(out[idx:], r.left)
+}
+
+// Resize changes the size of the ring.
+// The new size must be greater than or equal to the current size.
+func (r *Ring[T]) Resize(newSize int) error {
+	if newSize < r.Len() {
+		return fmt.Errorf("new size %d is too small to hold %d elements", newSize, r.Len())
+	}
+
+	els := make([]T, newSize)
+	count := r.Copy(els)
+	r.left = els[:count]
+	r.right = els[:0]
+	r.elements = els
+	return nil
 }
 
 // Reset removes all elements from the ring.
