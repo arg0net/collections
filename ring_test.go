@@ -158,6 +158,25 @@ func TestRingResize(t *testing.T) {
 	require.Equal(t, 5, r.Cap())
 }
 
+func TestRingCopy(t *testing.T) {
+	r := collections.NewRing[int](3)
+	require.Equal(t, 2, r.PushBackAll([]int{1, 2}))
+	require.Equal(t, 1, r.PushBackAll([]int{3, 4}))
+	require.Equal(t, 0, r.PushBackAll([]int{5, 6}))
+
+	buf := make([]int, 3)
+	require.Equal(t, 3, r.Copy(buf))
+	require.Equal(t, []int{1, 2, 3}, buf)
+
+	r.PopFront()
+	require.Equal(t, 2, r.Copy(buf))
+	require.Equal(t, []int{2, 3}, buf[:2])
+
+	require.Equal(t, 1, r.PushBackAll([]int{5, 6}))
+	require.Equal(t, 3, r.Copy(buf))
+	require.Equal(t, []int{2, 3, 5}, buf)
+}
+
 func BenchmarkRing(b *testing.B) {
 	r := collections.NewRing[int](1024)
 	// fill the ring
@@ -193,6 +212,12 @@ func (r *fakeRing) PushBack(e int) bool {
 	}
 	r.elements = append(r.elements, e)
 	return true
+}
+
+func (r *fakeRing) PushBackAll(in []int) int {
+	n := min(len(in), cap(r.elements)-len(r.elements))
+	r.elements = append(r.elements, in[:n]...)
+	return n
 }
 
 func (r *fakeRing) PopFront() (int, bool) {
@@ -237,6 +262,8 @@ const (
 	popIndex
 	peekIndex
 	scan
+	copyOut
+	pushAll
 	lastOpForCounting // keep last
 )
 
@@ -278,6 +305,7 @@ func FuzzRing(f *testing.F) {
 				if ok1 != ok2 {
 					t.Fatalf("pushBack differs: %v vs %v in %v vs %v", ok1, ok2, fake, real)
 				}
+
 			case popFront:
 				t.Logf("popFront")
 				f1, ok1 := fake.PopFront()
@@ -285,6 +313,7 @@ func FuzzRing(f *testing.F) {
 				if f1 != r1 || ok1 != ok2 {
 					t.Fatalf("popFront differs: %v vs %v in %v vs %v", f1, r1, fake, real)
 				}
+
 			case popIndex:
 				var idx int
 				if i+1 < len(ops) {
@@ -297,6 +326,7 @@ func FuzzRing(f *testing.F) {
 				if f1 != r1 || ok1 != ok2 {
 					t.Fatalf("popIndex differs: %v vs %v in %v vs %v", f1, r1, fake, real)
 				}
+
 			case peekIndex:
 				var idx int
 				if i+1 < len(ops) {
@@ -309,6 +339,7 @@ func FuzzRing(f *testing.F) {
 				if f1 != r1 || ok1 != ok2 {
 					t.Fatalf("peekIndex differs: %v vs %v in %v vs %v", f1, r1, fake, real)
 				}
+
 			case scan:
 				var idx int
 				if i+1 < len(ops) {
@@ -326,6 +357,27 @@ func FuzzRing(f *testing.F) {
 				if ok2 && (loc != idx || v != v2) {
 					t.Fatalf("scan differs: %v vs %v in %v", v, v2, real)
 				}
+
+			case copyOut:
+				var n int
+				if i+1 < len(ops) {
+					n = min(int(ops[i+1]), len(buf1))
+					i++
+				}
+				t.Logf("copyOut %d", n)
+				fake.Copy(buf1[:n])
+				real.Copy(buf2[:n])
+
+			case pushAll:
+				var n int
+				if i+1 < len(ops) {
+					n = min(int(ops[i+1]), len(buf1))
+					i++
+				}
+				t.Logf("pushAll %d", n)
+				fake.PushBackAll(buf1[:n])
+				real.PushBackAll(buf2[:n])
+
 			}
 			if fake.Copy(buf1[:]) != real.Copy(buf2[:]) {
 				t.Fatalf("copy differs")
