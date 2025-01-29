@@ -177,6 +177,19 @@ func TestRingCopy(t *testing.T) {
 	require.Equal(t, []int{2, 3, 5}, buf)
 }
 
+func TestRingSkip(t *testing.T) {
+	r := collections.NewRing[int](5)
+	require.Equal(t, 5, r.PushBackAll([]int{1, 2, 3, 4, 5}))
+	require.Equal(t, 3, r.Skip(3))
+	require.Equal(t, 2, r.Len())
+	require.Equal(t, 3, r.PushBackAll([]int{6, 7, 8}))
+	require.Equal(t, 4, r.Skip(4))
+	require.Equal(t, 1, r.Len())
+	v, ok := r.PeekFront()
+	require.True(t, ok)
+	require.Equal(t, 8, v)
+}
+
 func BenchmarkRing(b *testing.B) {
 	r := collections.NewRing[int](1024)
 	// fill the ring
@@ -230,6 +243,18 @@ func (r *fakeRing) PopFront() (int, bool) {
 	return el, true
 }
 
+func (r *fakeRing) Skip(n int) int {
+	skipped := 0
+	for n > 0 {
+		if _, ok := r.PopFront(); !ok {
+			break
+		}
+		skipped++
+		n--
+	}
+	return skipped
+}
+
 func (r *fakeRing) Copy(out []int) int {
 	return copy(out, r.elements)
 }
@@ -264,6 +289,7 @@ const (
 	scan
 	copyOut
 	pushAll
+	skip
 	lastOpForCounting // keep last
 )
 
@@ -273,6 +299,11 @@ func dup[T any](s []T) []T {
 	return out
 }
 
+// FuzzRing does differential fuzzing between the fakeRing and the real Ring.
+// The fakeRing is a simplified implementation of a ring buffer used for
+// fuzzing tests. The fakeRing is not optimized for performance, so it is
+// not a good representative of the real Ring, but should have the same
+// externally-visible behavior.
 func FuzzRing(f *testing.F) {
 	init := []int{1, 2, 3, 4, 5}
 
@@ -361,7 +392,7 @@ func FuzzRing(f *testing.F) {
 			case copyOut:
 				var n int
 				if i+1 < len(ops) {
-					n = min(int(ops[i+1]), len(buf1))
+					n = int(ops[i+1]) % len(buf1)
 					i++
 				}
 				t.Logf("copyOut %d", n)
@@ -371,14 +402,24 @@ func FuzzRing(f *testing.F) {
 			case pushAll:
 				var n int
 				if i+1 < len(ops) {
-					n = min(int(ops[i+1]), len(buf1))
+					n = int(ops[i+1]) % len(buf1)
 					i++
 				}
 				t.Logf("pushAll %d", n)
 				fake.PushBackAll(buf1[:n])
 				real.PushBackAll(buf2[:n])
 
+			case skip:
+				var n int
+				if i+1 < len(ops) {
+					n = int(ops[i+1])
+					i++
+				}
+				t.Logf("skip %d", n)
+				fake.Skip(n)
+				real.Skip(n)
 			}
+
 			if fake.Copy(buf1[:]) != real.Copy(buf2[:]) {
 				t.Fatalf("copy differs")
 			}
