@@ -1,6 +1,7 @@
 package collections_test
 
 import (
+	"io"
 	"slices"
 	"testing"
 
@@ -158,6 +159,207 @@ func TestRingResize(t *testing.T) {
 	require.Equal(t, 5, r.Cap())
 }
 
+func TestRingDrop(t *testing.T) {
+	t.Run("drop some elements", func(t *testing.T) {
+		r := collections.NewRing[int](5)
+		for i := 1; i <= 5; i++ {
+			require.True(t, r.PushBack(i))
+		}
+
+		buf := make([]int, 5)
+		require.Equal(t, 5, r.Copy(buf))
+		require.Equal(t, []int{1, 2, 3, 4, 5}, buf)
+
+		r.Drop(2)
+		require.Equal(t, 3, r.Len())
+
+		buf = make([]int, 3)
+		require.Equal(t, 3, r.Copy(buf))
+		require.Equal(t, []int{3, 4, 5}, buf)
+	})
+
+	t.Run("drop all elements", func(t *testing.T) {
+		r := collections.NewRing[int](3)
+		for i := 1; i <= 3; i++ {
+			require.True(t, r.PushBack(i))
+		}
+
+		r.Drop(3)
+		require.Equal(t, 0, r.Len())
+
+		buf := make([]int, 3)
+		require.Equal(t, 0, r.Copy(buf))
+	})
+
+	t.Run("drop more than length", func(t *testing.T) {
+		r := collections.NewRing[int](3)
+		for i := 1; i <= 3; i++ {
+			require.True(t, r.PushBack(i))
+		}
+
+		r.Drop(5)
+		require.Equal(t, 0, r.Len())
+	})
+
+	t.Run("drop with wrap-around", func(t *testing.T) {
+		r := collections.NewRing[int](3)
+		require.True(t, r.PushBack(1))
+		require.True(t, r.PushBack(2))
+		require.True(t, r.PushBack(3))
+
+		_, _ = r.PopFront()            // remove 1
+		require.True(t, r.PushBack(4)) // add 4, now we have [2,3,4]
+
+		r.Drop(2) // should leave just 4
+		require.Equal(t, 1, r.Len())
+
+		buf := make([]int, 1)
+		require.Equal(t, 1, r.Copy(buf))
+		require.Equal(t, []int{4}, buf)
+	})
+}
+
+func TestRingRead(t *testing.T) {
+	t.Run("read some elements", func(t *testing.T) {
+		r := collections.NewRing[int](5)
+		for i := 1; i <= 5; i++ {
+			require.True(t, r.PushBack(i))
+		}
+
+		buf := make([]int, 3)
+		n, err := r.Read(buf)
+		require.NoError(t, err)
+		require.Equal(t, 3, n)
+		require.Equal(t, []int{1, 2, 3}, buf)
+
+		// Elements should be consumed
+		require.Equal(t, 2, r.Len())
+
+		// Read remaining elements
+		n, err = r.Read(buf)
+		require.NoError(t, err)
+		require.Equal(t, 2, n)
+		require.Equal(t, []int{4, 5, 3}, buf) // Note: only first 2 elements changed
+	})
+
+	t.Run("read empty ring", func(t *testing.T) {
+		r := collections.NewRing[int](3)
+
+		buf := make([]int, 3)
+		n, err := r.Read(buf)
+		require.Equal(t, io.EOF, err)
+		require.Equal(t, 0, n)
+	})
+
+	t.Run("read with wrap-around", func(t *testing.T) {
+		r := collections.NewRing[int](3)
+		require.True(t, r.PushBack(1))
+		require.True(t, r.PushBack(2))
+		require.True(t, r.PushBack(3))
+
+		_, _ = r.PopFront()            // remove 1
+		require.True(t, r.PushBack(4)) // add 4, now we have [2,3,4]
+
+		buf := make([]int, 3)
+		n, err := r.Read(buf)
+		require.NoError(t, err)
+		require.Equal(t, 3, n)
+		require.Equal(t, []int{2, 3, 4}, buf)
+
+		// Ring should be empty after reading
+		require.Equal(t, 0, r.Len())
+	})
+}
+
+func TestRingWrite(t *testing.T) {
+	t.Run("write to empty ring", func(t *testing.T) {
+		r := collections.NewRing[int](5)
+
+		data := []int{1, 2, 3}
+		n, err := r.Write(data)
+		require.NoError(t, err)
+		require.Equal(t, 3, n)
+
+		// Verify elements were written
+		buf := make([]int, 5)
+		copied := r.Copy(buf)
+		require.Equal(t, 3, copied)
+		require.Equal(t, []int{1, 2, 3}, buf[:copied])
+	})
+
+	t.Run("write to partially filled ring", func(t *testing.T) {
+		r := collections.NewRing[int](5)
+		require.True(t, r.PushBack(1))
+		require.True(t, r.PushBack(2))
+
+		data := []int{3, 4, 5}
+		n, err := r.Write(data)
+		require.NoError(t, err)
+		require.Equal(t, 3, n)
+
+		// Verify all elements are present
+		buf := make([]int, 5)
+		copied := r.Copy(buf)
+		require.Equal(t, 5, copied)
+		require.Equal(t, []int{1, 2, 3, 4, 5}, buf[:copied])
+	})
+
+	t.Run("write to full ring", func(t *testing.T) {
+		r := collections.NewRing[int](3)
+		require.True(t, r.PushBack(1))
+		require.True(t, r.PushBack(2))
+		require.True(t, r.PushBack(3))
+
+		data := []int{4, 5}
+		n, err := r.Write(data)
+		require.Error(t, err)
+		require.Equal(t, 0, n)
+
+		// Verify ring is unchanged
+		buf := make([]int, 3)
+		copied := r.Copy(buf)
+		require.Equal(t, 3, copied)
+		require.Equal(t, []int{1, 2, 3}, buf[:copied])
+	})
+
+	t.Run("write with wrap-around", func(t *testing.T) {
+		r := collections.NewRing[int](3)
+		require.True(t, r.PushBack(1))
+		require.True(t, r.PushBack(2))
+		require.True(t, r.PushBack(3))
+
+		// Create wrap-around condition
+		_, _ = r.PopFront() // remove 1
+
+		data := []int{4}
+		n, err := r.Write(data)
+		require.NoError(t, err)
+		require.Equal(t, 1, n)
+
+		// Verify elements with wrap-around
+		buf := make([]int, 3)
+		copied := r.Copy(buf)
+		require.Equal(t, 3, copied)
+		require.Equal(t, []int{2, 3, 4}, buf[:copied])
+	})
+
+	t.Run("partial write when ring gets full", func(t *testing.T) {
+		r := collections.NewRing[int](3)
+		require.True(t, r.PushBack(1))
+
+		data := []int{2, 3, 4, 5}
+		n, err := r.Write(data)
+		require.Error(t, err)
+		require.Equal(t, 2, n) // Only 2 elements should be written
+
+		// Verify partial write
+		buf := make([]int, 3)
+		copied := r.Copy(buf)
+		require.Equal(t, 3, copied)
+		require.Equal(t, []int{1, 2, 3}, buf[:copied])
+	})
+}
+
 func BenchmarkRing(b *testing.B) {
 	r := collections.NewRing[int](1024)
 	// fill the ring
@@ -179,6 +381,33 @@ func BenchmarkRing(b *testing.B) {
 		r.PushBack(nextWrite)
 		nextWrite++
 	}
+}
+
+func BenchmarkRingReadWrite(b *testing.B) {
+	b.Run("Ring[byte]", func(b *testing.B) {
+		r := collections.NewRing[byte](1024)
+		data := make([]byte, 64)
+		for i := range data {
+			data[i] = byte(i % 256)
+		}
+		buf := make([]byte, 64)
+
+		b.ResetTimer()
+		b.SetBytes(int64(len(data) * 2))
+		for i := 0; i < b.N; i++ {
+			// Write data to the ring
+			_, err := r.Write(data)
+			if err != nil {
+				b.Fatalf("write error: %v", err)
+			}
+
+			// Read data from the ring
+			_, err = r.Read(buf)
+			if err != nil {
+				b.Fatalf("read error: %v", err)
+			}
+		}
+	})
 }
 
 // fakeRing is a simplified implementation of a buffer used for fuzzing tests.
