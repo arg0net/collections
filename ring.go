@@ -2,6 +2,7 @@ package collections
 
 import (
 	"fmt"
+	"io"
 	"iter"
 )
 
@@ -146,6 +147,75 @@ func (r *Ring[T]) Cap() int {
 func (r *Ring[T]) Copy(out []T) int {
 	idx := copy(out, r.right)
 	return idx + copy(out[idx:], r.left)
+}
+
+// Read copies the first n elements from the ring into the out slice.
+// It returns the number of elements copied and an error if the ring is empty.
+// If the ring is a Ring[byte], then this implements io.Reader.
+func (r *Ring[T]) Read(out []T) (int, error) {
+	n := r.Copy(out)
+	if n == 0 {
+		return 0, io.EOF
+	}
+
+	// consume the first n elements
+	r.Drop(n)
+	return n, nil
+}
+
+// Write writes the elements to the ring from the in slice.
+// It returns the number of elements written and an error if the ring is full.
+// If the ring is a Ring[byte], then this implements io.Writer.
+func (r *Ring[T]) Write(in []T) (int, error) {
+	available := r.Cap() - r.Len()
+	if available == 0 {
+		return 0, io.ErrShortWrite
+	}
+
+	written := 0
+	expected := len(in)
+	toWrite := min(available, expected)
+
+	// First fill the right side if it has space
+	if rightSpace := cap(r.right) - len(r.right); rightSpace > 0 {
+		n := min(rightSpace, toWrite)
+		r.right = append(r.right, in[:n]...)
+		written += n
+		toWrite -= n
+		in = in[n:]
+	}
+
+	// Then fill the left side if we still have elements to write
+	if toWrite > 0 && len(r.left)+len(r.right) < cap(r.elements) {
+		r.left = append(r.left, in[:toWrite]...)
+		written += toWrite
+	}
+
+	if written < expected {
+		return written, io.ErrShortWrite
+	}
+	return written, nil
+}
+
+// Drop removes the first n elements from the ring.
+// If n is greater than the number of elements in the ring, all elements are removed.
+func (r *Ring[T]) Drop(n int) {
+	if n >= r.Len() {
+		// If dropping more elements than we have, just reset
+		r.Reset()
+		return
+	}
+
+	// First drop from right side
+	if n < len(r.right) {
+		r.right = r.right[n:]
+		return
+	}
+
+	// Dropped all of right, now drop from left
+	n -= len(r.right)
+	r.right = r.elements[:len(r.left)-n]
+	r.left = r.elements[:0]
 }
 
 // Resize changes the size of the ring.
