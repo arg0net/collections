@@ -103,14 +103,12 @@ func (c *Channel[T]) Watch(ctx context.Context, fn func(T) error) error {
 func (c *Channel[T]) Receive() iter.Seq[T] {
 	next := c.head()
 	return func(yield func(T) bool) {
-		for {
-			select {
-			case <-next.final:
-				if next.closed || !yield(next.value) {
-					return
-				}
-				next = next.next
+		for next != nil {
+			<-next.final
+			if next.closed || !yield(next.value) {
+				return
 			}
+			next = next.next
 		}
 	}
 }
