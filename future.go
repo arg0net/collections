@@ -3,7 +3,6 @@ package collections
 import (
 	"context"
 	"iter"
-	"log/slog"
 	"reflect"
 	"sync"
 )
@@ -76,7 +75,6 @@ func WatchFutures[T any](ctx context.Context, futures ...*Future[T]) iter.Seq2[i
 				return // context cancelled
 			}
 			future := futures[chosen]
-			slog.Info("future selected", "index", chosen)
 			value, err := future.Get(ctx)
 			if err != nil {
 				return // context cancelled
