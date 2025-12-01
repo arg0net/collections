@@ -1,10 +1,10 @@
 module github.com/arg0net/collections
 
-go 1.23.0
+go 1.25.0
 
 require (
-	github.com/AdaLogics/go-fuzz-headers v0.0.0-20230811130428-ced1acdcaa24
-	github.com/stretchr/testify v1.9.0
+	github.com/AdaLogics/go-fuzz-headers v0.0.0-20240806141605-e8a1dd7889d6
+	github.com/stretchr/testify v1.11.1
 )
 
 require (
