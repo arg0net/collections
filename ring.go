@@ -44,6 +44,25 @@ func (r *Ring[T]) PushBack(e T) bool {
 	return true
 }
 
+// PushBackAll adds elements to the ring.
+// It returns the number of elements copied, which may be less than len(in)
+// if the ring is full.
+func (r *Ring[T]) PushBackAll(in []T) int {
+	copied := 0
+	if n := min(len(in), cap(r.right)-len(r.right)); n > 0 {
+		r.right = append(r.right, in[:n]...)
+		copied = n
+		in = in[n:]
+	}
+
+	if n := min(len(in), cap(r.elements)-len(r.left)-len(r.right)); n > 0 {
+		r.left = append(r.left, in[:n]...)
+		copied += n
+	}
+
+	return copied
+}
+
 // PopFront removes and returns the first element in the ring.
 // If the ring is empty, it returns false.
 func (r *Ring[T]) PopFront() (T, bool) {
@@ -198,24 +217,29 @@ func (r *Ring[T]) Write(in []T) (int, error) {
 }
 
 // Drop removes the first n elements from the ring.
+// It returns the number of elements dropped.
 // If n is greater than the number of elements in the ring, all elements are removed.
-func (r *Ring[T]) Drop(n int) {
+func (r *Ring[T]) Drop(n int) int {
 	if n >= r.Len() {
 		// If dropping more elements than we have, just reset
+		dropped := r.Len()
 		r.Reset()
-		return
+		return dropped
 	}
+
+	dropped := n
 
 	// First drop from right side
 	if n < len(r.right) {
 		r.right = r.right[n:]
-		return
+		return dropped
 	}
 
 	// Dropped all of right, now drop from left
 	n -= len(r.right)
-	r.right = r.elements[:len(r.left)-n]
+	r.right = r.left[n:]
 	r.left = r.elements[:0]
+	return dropped
 }
 
 // Resize changes the size of the ring.

@@ -1,3 +1,4 @@
+// Package collections provides a collection of data structures.
 package collections
 
 import (
@@ -33,7 +34,8 @@ func (f *Future[T]) Get(ctx context.Context) (T, error) {
 	case <-f.done:
 		return f.value, nil
 	case <-ctx.Done():
-		return f.value, ctx.Err()
+		var zero T
+		return zero, ctx.Err()
 	}
 }
 

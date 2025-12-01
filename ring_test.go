@@ -170,7 +170,10 @@ func TestRingDrop(t *testing.T) {
 		require.Equal(t, 5, r.Copy(buf))
 		require.Equal(t, []int{1, 2, 3, 4, 5}, buf)
 
-		r.Drop(2)
+		require.Equal(t, []int{1, 2, 3, 4, 5}, buf)
+
+		dropped := r.Drop(2)
+		require.Equal(t, 2, dropped)
 		require.Equal(t, 3, r.Len())
 
 		buf = make([]int, 3)
@@ -184,7 +187,8 @@ func TestRingDrop(t *testing.T) {
 			require.True(t, r.PushBack(i))
 		}
 
-		r.Drop(3)
+		dropped := r.Drop(3)
+		require.Equal(t, 3, dropped)
 		require.Equal(t, 0, r.Len())
 
 		buf := make([]int, 3)
@@ -197,7 +201,8 @@ func TestRingDrop(t *testing.T) {
 			require.True(t, r.PushBack(i))
 		}
 
-		r.Drop(5)
+		dropped := r.Drop(5)
+		require.Equal(t, 3, dropped)
 		require.Equal(t, 0, r.Len())
 	})
 
@@ -210,12 +215,35 @@ func TestRingDrop(t *testing.T) {
 		_, _ = r.PopFront()            // remove 1
 		require.True(t, r.PushBack(4)) // add 4, now we have [2,3,4]
 
-		r.Drop(2) // should leave just 4
+		dropped := r.Drop(2) // should leave just 4
+		require.Equal(t, 2, dropped)
 		require.Equal(t, 1, r.Len())
 
 		buf := make([]int, 1)
 		require.Equal(t, 1, r.Copy(buf))
 		require.Equal(t, []int{4}, buf)
+	})
+
+	t.Run("drop into left", func(t *testing.T) {
+		r := collections.NewRing[int](5)
+		for i := 1; i <= 5; i++ {
+			r.PushBack(i)
+		}
+		r.PopFront()
+		r.PopFront()
+		// right=[3,4,5]
+		r.PushBack(6)
+		r.PushBack(7)
+		// left=[6,7]
+		// Ring: [3, 4, 5, 6, 7]
+
+		dropped := r.Drop(4) // Drop 3, 4, 5, 6. Keep 7.
+		require.Equal(t, 4, dropped)
+		require.Equal(t, 1, r.Len())
+
+		buf := make([]int, 1)
+		require.Equal(t, 1, r.Copy(buf))
+		require.Equal(t, []int{7}, buf)
 	})
 }
 
@@ -360,6 +388,100 @@ func TestRingWrite(t *testing.T) {
 	})
 }
 
+func TestRing_PushBackAll(t *testing.T) {
+	t.Run("push to empty ring", func(t *testing.T) {
+		r := collections.NewRing[int](5)
+		data := []int{1, 2, 3}
+		n := r.PushBackAll(data)
+		require.Equal(t, 3, n)
+		require.Equal(t, 3, r.Len())
+
+		buf := make([]int, 5)
+		copied := r.Copy(buf)
+		require.Equal(t, 3, copied)
+		require.Equal(t, []int{1, 2, 3}, buf[:copied])
+	})
+
+	t.Run("push to partially filled ring", func(t *testing.T) {
+		r := collections.NewRing[int](5)
+		r.PushBack(1)
+		r.PushBack(2)
+
+		data := []int{3, 4, 5}
+		n := r.PushBackAll(data)
+		require.Equal(t, 3, n)
+		require.Equal(t, 5, r.Len())
+
+		buf := make([]int, 5)
+		copied := r.Copy(buf)
+		require.Equal(t, 5, copied)
+		require.Equal(t, []int{1, 2, 3, 4, 5}, buf[:copied])
+	})
+
+	t.Run("push to full ring", func(t *testing.T) {
+		r := collections.NewRing[int](3)
+		r.PushBack(1)
+		r.PushBack(2)
+		r.PushBack(3)
+
+		data := []int{4, 5}
+		n := r.PushBackAll(data)
+		require.Equal(t, 0, n)
+		require.Equal(t, 3, r.Len())
+
+		buf := make([]int, 3)
+		copied := r.Copy(buf)
+		require.Equal(t, 3, copied)
+		require.Equal(t, []int{1, 2, 3}, buf[:copied])
+	})
+
+	t.Run("push with wrap-around", func(t *testing.T) {
+		r := collections.NewRing[int](3)
+		r.PushBack(1)
+		r.PushBack(2)
+		r.PushBack(3)
+		r.PopFront() // remove 1, now [2, 3]
+
+		data := []int{4}
+		n := r.PushBackAll(data)
+		require.Equal(t, 1, n)
+		require.Equal(t, 3, r.Len())
+
+		buf := make([]int, 3)
+		copied := r.Copy(buf)
+		require.Equal(t, 3, copied)
+		require.Equal(t, []int{2, 3, 4}, buf[:copied])
+	})
+
+	t.Run("push more than capacity", func(t *testing.T) {
+		r := collections.NewRing[int](3)
+		r.PushBack(1)
+
+		data := []int{2, 3, 4, 5}
+		n := r.PushBackAll(data)
+		require.Equal(t, 2, n) // can only fit 2 more
+		require.Equal(t, 3, r.Len())
+
+		buf := make([]int, 3)
+		copied := r.Copy(buf)
+		require.Equal(t, 3, copied)
+		require.Equal(t, []int{1, 2, 3}, buf[:copied])
+	})
+
+	t.Run("push empty slice", func(t *testing.T) {
+		r := collections.NewRing[int](5)
+		r.PushBack(1)
+
+		n := r.PushBackAll(nil)
+		require.Equal(t, 0, n)
+		require.Equal(t, 1, r.Len())
+
+		n = r.PushBackAll([]int{})
+		require.Equal(t, 0, n)
+		require.Equal(t, 1, r.Len())
+	})
+}
+
 func BenchmarkRing(b *testing.B) {
 	r := collections.NewRing[int](1024)
 	// fill the ring
@@ -424,6 +546,12 @@ func (r *fakeRing) PushBack(e int) bool {
 	return true
 }
 
+func (r *fakeRing) PushBackAll(in []int) int {
+	n := min(len(in), cap(r.elements)-len(r.elements))
+	r.elements = append(r.elements, in[:n]...)
+	return n
+}
+
 func (r *fakeRing) PopFront() (int, bool) {
 	if len(r.elements) == 0 {
 		return 0, false
@@ -432,6 +560,18 @@ func (r *fakeRing) PopFront() (int, bool) {
 	copy(r.elements, r.elements[1:])
 	r.elements = r.elements[:len(r.elements)-1]
 	return el, true
+}
+
+func (r *fakeRing) Drop(n int) int {
+	skipped := 0
+	for n > 0 {
+		if _, ok := r.PopFront(); !ok {
+			break
+		}
+		skipped++
+		n--
+	}
+	return skipped
 }
 
 func (r *fakeRing) Copy(out []int) int {
@@ -466,6 +606,9 @@ const (
 	popIndex
 	peekIndex
 	scan
+	copyOut
+	pushAll
+	drop
 	lastOpForCounting // keep last
 )
 
@@ -475,6 +618,11 @@ func dup[T any](s []T) []T {
 	return out
 }
 
+// FuzzRing does differential fuzzing between the fakeRing and the real Ring.
+// The fakeRing is a simplified implementation of a ring buffer used for
+// fuzzing tests. The fakeRing is not optimized for performance, so it is
+// not a good representative of the real Ring, but should have the same
+// externally-visible behavior.
 func FuzzRing(f *testing.F) {
 	init := []int{1, 2, 3, 4, 5}
 
@@ -507,6 +655,7 @@ func FuzzRing(f *testing.F) {
 				if ok1 != ok2 {
 					t.Fatalf("pushBack differs: %v vs %v in %v vs %v", ok1, ok2, fake, real)
 				}
+
 			case popFront:
 				t.Logf("popFront")
 				f1, ok1 := fake.PopFront()
@@ -514,6 +663,7 @@ func FuzzRing(f *testing.F) {
 				if f1 != r1 || ok1 != ok2 {
 					t.Fatalf("popFront differs: %v vs %v in %v vs %v", f1, r1, fake, real)
 				}
+
 			case popIndex:
 				var idx int
 				if i+1 < len(ops) {
@@ -526,6 +676,7 @@ func FuzzRing(f *testing.F) {
 				if f1 != r1 || ok1 != ok2 {
 					t.Fatalf("popIndex differs: %v vs %v in %v vs %v", f1, r1, fake, real)
 				}
+
 			case peekIndex:
 				var idx int
 				if i+1 < len(ops) {
@@ -538,6 +689,7 @@ func FuzzRing(f *testing.F) {
 				if f1 != r1 || ok1 != ok2 {
 					t.Fatalf("peekIndex differs: %v vs %v in %v vs %v", f1, r1, fake, real)
 				}
+
 			case scan:
 				var idx int
 				if i+1 < len(ops) {
@@ -555,7 +707,41 @@ func FuzzRing(f *testing.F) {
 				if ok2 && (loc != idx || v != v2) {
 					t.Fatalf("scan differs: %v vs %v in %v", v, v2, real)
 				}
+
+			case copyOut:
+				var n int
+				if i+1 < len(ops) {
+					n = int(ops[i+1]) % len(buf1)
+					i++
+				}
+				t.Logf("copyOut %d", n)
+				fake.Copy(buf1[:n])
+				real.Copy(buf2[:n])
+
+			case pushAll:
+				var n int
+				if i+1 < len(ops) {
+					n = int(ops[i+1]) % len(buf1)
+					i++
+				}
+				t.Logf("pushAll %d", n)
+				fake.PushBackAll(buf1[:n])
+				real.PushBackAll(buf2[:n])
+
+			case drop:
+				var n int
+				if i+1 < len(ops) {
+					n = int(ops[i+1])
+					i++
+				}
+				t.Logf("drop %d", n)
+				d1 := fake.Drop(n)
+				d2 := real.Drop(n)
+				if d1 != d2 {
+					t.Fatalf("drop differs: %v vs %v", d1, d2)
+				}
 			}
+
 			if fake.Copy(buf1[:]) != real.Copy(buf2[:]) {
 				t.Fatalf("copy differs")
 			}

@@ -43,9 +43,7 @@ func TestNotifierUpdate(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			select {
-			case <-start:
-			}
+			<-start
 			sn.Update(incr)
 		}()
 	}

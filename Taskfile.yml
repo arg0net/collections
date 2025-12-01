@@ -14,7 +14,7 @@ tasks:
   fuzz:
     desc: Run fuzz tests.
     cmds:
-      - go test -fuzz=Fuzz -fuzztime 30s .
+      - go test -fuzz=Fuzz -fuzztime 60s .
 
   bench:
     desc: Run benchmarks.
