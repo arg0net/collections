@@ -219,6 +219,66 @@ func TestRingDrop(t *testing.T) {
 	})
 }
 
+func TestRingSkip(t *testing.T) {
+	t.Run("skip within right", func(t *testing.T) {
+		r := collections.NewRing[int](5)
+		for i := 1; i <= 5; i++ {
+			r.PushBack(i)
+		}
+		// r.right = [1, 2, 3, 4, 5], r.left = []
+
+		skipped := r.Skip(2)
+		require.Equal(t, 2, skipped)
+		require.Equal(t, 3, r.Len())
+
+		buf := make([]int, 3)
+		r.Copy(buf)
+		require.Equal(t, []int{3, 4, 5}, buf)
+	})
+
+	t.Run("skip exact right", func(t *testing.T) {
+		r := collections.NewRing[int](3)
+		r.PushBack(1)
+		r.PushBack(2)
+		r.PushBack(3)
+		r.PopFront() // remove 1
+		r.PushBack(4)
+		// r.right = [2, 3], r.left = [4]
+
+		skipped := r.Skip(2)
+		require.Equal(t, 2, skipped)
+		require.Equal(t, 1, r.Len())
+
+		buf := make([]int, 1)
+		r.Copy(buf)
+		require.Equal(t, []int{4}, buf)
+	})
+
+	t.Run("skip into left", func(t *testing.T) {
+		r := collections.NewRing[int](3)
+		r.PushBack(1)
+		r.PushBack(2)
+		r.PushBack(3)
+		r.PopFront() // remove 1
+		r.PushBack(4)
+		// r.right = [2, 3], r.left = [4]
+
+		skipped := r.Skip(3)
+		require.Equal(t, 3, skipped)
+		require.Equal(t, 0, r.Len())
+	})
+
+	t.Run("skip more than length", func(t *testing.T) {
+		r := collections.NewRing[int](3)
+		r.PushBack(1)
+		r.PushBack(2)
+
+		skipped := r.Skip(5)
+		require.Equal(t, 2, skipped)
+		require.Equal(t, 0, r.Len())
+	})
+}
+
 func TestRingRead(t *testing.T) {
 	t.Run("read some elements", func(t *testing.T) {
 		r := collections.NewRing[int](5)
@@ -357,6 +417,100 @@ func TestRingWrite(t *testing.T) {
 		copied := r.Copy(buf)
 		require.Equal(t, 3, copied)
 		require.Equal(t, []int{1, 2, 3}, buf[:copied])
+	})
+}
+
+func TestRing_PushBackAll(t *testing.T) {
+	t.Run("push to empty ring", func(t *testing.T) {
+		r := collections.NewRing[int](5)
+		data := []int{1, 2, 3}
+		n := r.PushBackAll(data)
+		require.Equal(t, 3, n)
+		require.Equal(t, 3, r.Len())
+
+		buf := make([]int, 5)
+		copied := r.Copy(buf)
+		require.Equal(t, 3, copied)
+		require.Equal(t, []int{1, 2, 3}, buf[:copied])
+	})
+
+	t.Run("push to partially filled ring", func(t *testing.T) {
+		r := collections.NewRing[int](5)
+		r.PushBack(1)
+		r.PushBack(2)
+
+		data := []int{3, 4, 5}
+		n := r.PushBackAll(data)
+		require.Equal(t, 3, n)
+		require.Equal(t, 5, r.Len())
+
+		buf := make([]int, 5)
+		copied := r.Copy(buf)
+		require.Equal(t, 5, copied)
+		require.Equal(t, []int{1, 2, 3, 4, 5}, buf[:copied])
+	})
+
+	t.Run("push to full ring", func(t *testing.T) {
+		r := collections.NewRing[int](3)
+		r.PushBack(1)
+		r.PushBack(2)
+		r.PushBack(3)
+
+		data := []int{4, 5}
+		n := r.PushBackAll(data)
+		require.Equal(t, 0, n)
+		require.Equal(t, 3, r.Len())
+
+		buf := make([]int, 3)
+		copied := r.Copy(buf)
+		require.Equal(t, 3, copied)
+		require.Equal(t, []int{1, 2, 3}, buf[:copied])
+	})
+
+	t.Run("push with wrap-around", func(t *testing.T) {
+		r := collections.NewRing[int](3)
+		r.PushBack(1)
+		r.PushBack(2)
+		r.PushBack(3)
+		r.PopFront() // remove 1, now [2, 3]
+
+		data := []int{4}
+		n := r.PushBackAll(data)
+		require.Equal(t, 1, n)
+		require.Equal(t, 3, r.Len())
+
+		buf := make([]int, 3)
+		copied := r.Copy(buf)
+		require.Equal(t, 3, copied)
+		require.Equal(t, []int{2, 3, 4}, buf[:copied])
+	})
+
+	t.Run("push more than capacity", func(t *testing.T) {
+		r := collections.NewRing[int](3)
+		r.PushBack(1)
+
+		data := []int{2, 3, 4, 5}
+		n := r.PushBackAll(data)
+		require.Equal(t, 2, n) // can only fit 2 more
+		require.Equal(t, 3, r.Len())
+
+		buf := make([]int, 3)
+		copied := r.Copy(buf)
+		require.Equal(t, 3, copied)
+		require.Equal(t, []int{1, 2, 3}, buf[:copied])
+	})
+
+	t.Run("push empty slice", func(t *testing.T) {
+		r := collections.NewRing[int](5)
+		r.PushBack(1)
+
+		n := r.PushBackAll(nil)
+		require.Equal(t, 0, n)
+		require.Equal(t, 1, r.Len())
+
+		n = r.PushBackAll([]int{})
+		require.Equal(t, 0, n)
+		require.Equal(t, 1, r.Len())
 	})
 }
 
