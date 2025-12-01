@@ -251,6 +251,10 @@ func (r *Ring[T]) Write(in []T) (int, error) {
 
 // Drop removes the first n elements from the ring.
 // If n is greater than the number of elements in the ring, all elements are removed.
+// Unlike Skip, this does not zero out the elements that are dropped,
+// and does not indicate how many elements were removed.
+// If resetting the values is not important, then Drop is faster than Skip.
+// If resetting the values is important, then Skip should be used.
 func (r *Ring[T]) Drop(n int) {
 	if n >= r.Len() {
 		// If dropping more elements than we have, just reset
@@ -266,7 +270,7 @@ func (r *Ring[T]) Drop(n int) {
 
 	// Dropped all of right, now drop from left
 	n -= len(r.right)
-	r.right = r.elements[:len(r.left)-n]
+	r.right = r.left[n:]
 	r.left = r.elements[:0]
 }
 

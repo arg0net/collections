@@ -217,6 +217,27 @@ func TestRingDrop(t *testing.T) {
 		require.Equal(t, 1, r.Copy(buf))
 		require.Equal(t, []int{4}, buf)
 	})
+
+	t.Run("drop into left", func(t *testing.T) {
+		r := collections.NewRing[int](5)
+		for i := 1; i <= 5; i++ {
+			r.PushBack(i)
+		}
+		r.PopFront()
+		r.PopFront()
+		// right=[3,4,5]
+		r.PushBack(6)
+		r.PushBack(7)
+		// left=[6,7]
+		// Ring: [3, 4, 5, 6, 7]
+
+		r.Drop(4) // Drop 3, 4, 5, 6. Keep 7.
+		require.Equal(t, 1, r.Len())
+
+		buf := make([]int, 1)
+		require.Equal(t, 1, r.Copy(buf))
+		require.Equal(t, []int{7}, buf)
+	})
 }
 
 func TestRingSkip(t *testing.T) {
@@ -630,6 +651,10 @@ func (r *fakeRing) PeekIndex(idx int) (int, bool) {
 	return r.elements[idx], true
 }
 
+func (r *fakeRing) Drop(n int) {
+	r.Skip(n)
+}
+
 type ringOp int
 
 const (
@@ -641,6 +666,7 @@ const (
 	copyOut
 	pushAll
 	skip
+	drop
 	lastOpForCounting // keep last
 )
 
@@ -769,6 +795,16 @@ func FuzzRing(f *testing.F) {
 				t.Logf("skip %d", n)
 				fake.Skip(n)
 				real.Skip(n)
+
+			case drop:
+				var n int
+				if i+1 < len(ops) {
+					n = int(ops[i+1])
+					i++
+				}
+				t.Logf("drop %d", n)
+				fake.Drop(n)
+				real.Drop(n)
 			}
 
 			if fake.Copy(buf1[:]) != real.Copy(buf2[:]) {
