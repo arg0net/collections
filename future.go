@@ -1,3 +1,4 @@
+// Package collections provides a collection of data structures.
 package collections
 
 import (

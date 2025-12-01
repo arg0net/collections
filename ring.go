@@ -83,39 +83,6 @@ func (r *Ring[T]) PopFront() (T, bool) {
 	return el, true
 }
 
-// Skip removes the first n elements from the ring.
-// It returns the number of elements skipped.
-// The values that were skipped are zeroed out to aid garbage collection.
-func (r *Ring[T]) Skip(n int) int {
-	var zero T
-	var skipped int
-
-	// Handle full right slice skip
-	if n >= len(r.right) {
-		// Zero all right elements being skipped
-		for i := range r.right {
-			r.right[i] = zero
-		}
-		skipped = len(r.right)
-		n -= skipped
-		r.right = r.left
-		r.left = r.elements[:0]
-	}
-
-	// Handle remaining skip in new right slice
-	if n > 0 && len(r.right) > 0 {
-		n = min(n, len(r.right))
-		// Zero the elements being skipped
-		for i := 0; i < n; i++ {
-			r.right[i] = zero
-		}
-		skipped += n
-		r.right = r.right[n:]
-	}
-
-	return skipped
-}
-
 // PopIndex removes and returns the element at the given index.
 // This will require copying elements to maintain the ring structure, which
 // has a time complexity of O(n) in the worst case.
@@ -250,28 +217,29 @@ func (r *Ring[T]) Write(in []T) (int, error) {
 }
 
 // Drop removes the first n elements from the ring.
+// It returns the number of elements dropped.
 // If n is greater than the number of elements in the ring, all elements are removed.
-// Unlike Skip, this does not zero out the elements that are dropped,
-// and does not indicate how many elements were removed.
-// If resetting the values is not important, then Drop is faster than Skip.
-// If resetting the values is important, then Skip should be used.
-func (r *Ring[T]) Drop(n int) {
+func (r *Ring[T]) Drop(n int) int {
 	if n >= r.Len() {
 		// If dropping more elements than we have, just reset
+		dropped := r.Len()
 		r.Reset()
-		return
+		return dropped
 	}
+
+	dropped := n
 
 	// First drop from right side
 	if n < len(r.right) {
 		r.right = r.right[n:]
-		return
+		return dropped
 	}
 
 	// Dropped all of right, now drop from left
 	n -= len(r.right)
 	r.right = r.left[n:]
 	r.left = r.elements[:0]
+	return dropped
 }
 
 // Resize changes the size of the ring.

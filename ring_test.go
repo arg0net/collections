@@ -170,7 +170,10 @@ func TestRingDrop(t *testing.T) {
 		require.Equal(t, 5, r.Copy(buf))
 		require.Equal(t, []int{1, 2, 3, 4, 5}, buf)
 
-		r.Drop(2)
+		require.Equal(t, []int{1, 2, 3, 4, 5}, buf)
+
+		dropped := r.Drop(2)
+		require.Equal(t, 2, dropped)
 		require.Equal(t, 3, r.Len())
 
 		buf = make([]int, 3)
@@ -184,7 +187,8 @@ func TestRingDrop(t *testing.T) {
 			require.True(t, r.PushBack(i))
 		}
 
-		r.Drop(3)
+		dropped := r.Drop(3)
+		require.Equal(t, 3, dropped)
 		require.Equal(t, 0, r.Len())
 
 		buf := make([]int, 3)
@@ -197,7 +201,8 @@ func TestRingDrop(t *testing.T) {
 			require.True(t, r.PushBack(i))
 		}
 
-		r.Drop(5)
+		dropped := r.Drop(5)
+		require.Equal(t, 3, dropped)
 		require.Equal(t, 0, r.Len())
 	})
 
@@ -210,7 +215,8 @@ func TestRingDrop(t *testing.T) {
 		_, _ = r.PopFront()            // remove 1
 		require.True(t, r.PushBack(4)) // add 4, now we have [2,3,4]
 
-		r.Drop(2) // should leave just 4
+		dropped := r.Drop(2) // should leave just 4
+		require.Equal(t, 2, dropped)
 		require.Equal(t, 1, r.Len())
 
 		buf := make([]int, 1)
@@ -231,72 +237,13 @@ func TestRingDrop(t *testing.T) {
 		// left=[6,7]
 		// Ring: [3, 4, 5, 6, 7]
 
-		r.Drop(4) // Drop 3, 4, 5, 6. Keep 7.
+		dropped := r.Drop(4) // Drop 3, 4, 5, 6. Keep 7.
+		require.Equal(t, 4, dropped)
 		require.Equal(t, 1, r.Len())
 
 		buf := make([]int, 1)
 		require.Equal(t, 1, r.Copy(buf))
 		require.Equal(t, []int{7}, buf)
-	})
-}
-
-func TestRingSkip(t *testing.T) {
-	t.Run("skip within right", func(t *testing.T) {
-		r := collections.NewRing[int](5)
-		for i := 1; i <= 5; i++ {
-			r.PushBack(i)
-		}
-		// r.right = [1, 2, 3, 4, 5], r.left = []
-
-		skipped := r.Skip(2)
-		require.Equal(t, 2, skipped)
-		require.Equal(t, 3, r.Len())
-
-		buf := make([]int, 3)
-		r.Copy(buf)
-		require.Equal(t, []int{3, 4, 5}, buf)
-	})
-
-	t.Run("skip exact right", func(t *testing.T) {
-		r := collections.NewRing[int](3)
-		r.PushBack(1)
-		r.PushBack(2)
-		r.PushBack(3)
-		r.PopFront() // remove 1
-		r.PushBack(4)
-		// r.right = [2, 3], r.left = [4]
-
-		skipped := r.Skip(2)
-		require.Equal(t, 2, skipped)
-		require.Equal(t, 1, r.Len())
-
-		buf := make([]int, 1)
-		r.Copy(buf)
-		require.Equal(t, []int{4}, buf)
-	})
-
-	t.Run("skip into left", func(t *testing.T) {
-		r := collections.NewRing[int](3)
-		r.PushBack(1)
-		r.PushBack(2)
-		r.PushBack(3)
-		r.PopFront() // remove 1
-		r.PushBack(4)
-		// r.right = [2, 3], r.left = [4]
-
-		skipped := r.Skip(3)
-		require.Equal(t, 3, skipped)
-		require.Equal(t, 0, r.Len())
-	})
-
-	t.Run("skip more than length", func(t *testing.T) {
-		r := collections.NewRing[int](3)
-		r.PushBack(1)
-		r.PushBack(2)
-
-		skipped := r.Skip(5)
-		require.Equal(t, 2, skipped)
-		require.Equal(t, 0, r.Len())
 	})
 }
 
@@ -615,7 +562,7 @@ func (r *fakeRing) PopFront() (int, bool) {
 	return el, true
 }
 
-func (r *fakeRing) Skip(n int) int {
+func (r *fakeRing) Drop(n int) int {
 	skipped := 0
 	for n > 0 {
 		if _, ok := r.PopFront(); !ok {
@@ -651,10 +598,6 @@ func (r *fakeRing) PeekIndex(idx int) (int, bool) {
 	return r.elements[idx], true
 }
 
-func (r *fakeRing) Drop(n int) {
-	r.Skip(n)
-}
-
 type ringOp int
 
 const (
@@ -665,7 +608,6 @@ const (
 	scan
 	copyOut
 	pushAll
-	skip
 	drop
 	lastOpForCounting // keep last
 )
@@ -786,16 +728,6 @@ func FuzzRing(f *testing.F) {
 				fake.PushBackAll(buf1[:n])
 				real.PushBackAll(buf2[:n])
 
-			case skip:
-				var n int
-				if i+1 < len(ops) {
-					n = int(ops[i+1])
-					i++
-				}
-				t.Logf("skip %d", n)
-				fake.Skip(n)
-				real.Skip(n)
-
 			case drop:
 				var n int
 				if i+1 < len(ops) {
@@ -803,8 +735,11 @@ func FuzzRing(f *testing.F) {
 					i++
 				}
 				t.Logf("drop %d", n)
-				fake.Drop(n)
-				real.Drop(n)
+				d1 := fake.Drop(n)
+				d2 := real.Drop(n)
+				if d1 != d2 {
+					t.Fatalf("drop differs: %v vs %v", d1, d2)
+				}
 			}
 
 			if fake.Copy(buf1[:]) != real.Copy(buf2[:]) {
